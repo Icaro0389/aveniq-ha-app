@@ -16,6 +16,7 @@ PORT = int(os.environ.get('PORT', '8099'))
 TOKEN = os.environ.get('SUPERVISOR_TOKEN') or os.environ.get('HASSIO_TOKEN')
 BASE = 'http://supervisor/core/api'
 ALLOWED = {
+    'alarm_control_panel': {'alarm_arm_away', 'alarm_arm_night', 'alarm_disarm'},
     'light': {'turn_on', 'turn_off', 'toggle'},
     'switch': {'turn_on', 'turn_off', 'toggle'},
     'cover': {'open_cover', 'close_cover', 'stop_cover', 'set_cover_position'},
@@ -25,7 +26,8 @@ ALLOWED = {
     'media_player': {'media_play_pause', 'media_stop', 'media_next_track', 'media_previous_track', 'volume_up', 'volume_down'},
 }
 # Security-sensitive commands intentionally omitted in the first release:
-# unlock, alarm disarm, garage control, remote execution, service restarts.
+# unlock, garage control, remote execution, service restarts.
+# Alarmo controls are restricted to its exact configured entity ID.
 
 
 def ha(method, resource, payload=None):
@@ -146,7 +148,14 @@ class Handler(BaseHTTPRequestHandler):
             if service not in ALLOWED.get(domain, ()) or not entity_id.startswith(domain + '.'):
                 return self.send_json(403, {'error': 'Comando non consentito'})
             extra = data.get('data', {})
-            if not isinstance(extra, dict) or any(k not in ('brightness_pct','rgb_color','temperature','hvac_mode','position') for k in extra):
+            if domain == 'alarm_control_panel':
+                if entity_id != 'alarm_control_panel.alarmo':
+                    return self.send_json(403, {'error': 'Entità antifurto non consentita'})
+                if not isinstance(extra, dict) or any(k != 'code' for k in extra):
+                    return self.send_json(400, {'error': 'Parametri Alarmo non validi'})
+                if 'code' in extra and (not isinstance(extra['code'], str) or len(extra['code']) > 64):
+                    return self.send_json(400, {'error': 'Codice non valido'})
+            elif not isinstance(extra, dict) or any(k not in ('brightness_pct','rgb_color','temperature','hvac_mode','position') for k in extra):
                 return self.send_json(400, {'error': 'Parametri non validi'})
             ha('POST', f'/services/{domain}/{service}', {'entity_id': entity_id, **extra})
             return self.send_json(200, {'ok': True})
