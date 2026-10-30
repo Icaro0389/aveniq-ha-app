@@ -58,7 +58,7 @@ def save_prefs(obj):
 
 
 BRIDGE_GET = {'health', 'roots', 'favourites', 'radio'}
-BRIDGE_POST = {'browse', 'play', 'favourite', 'favourite/remove'}
+BRIDGE_POST = {'browse', 'play', 'favourite', 'favourite/remove', 'remote'}
 def bridge_request(action, payload=None):
     from urllib.parse import urlparse
     options_path = DATA_DIR / 'options.json'
@@ -73,6 +73,14 @@ def bridge_request(action, payload=None):
         raise ValueError('Bridge URL non configurato correttamente')
     if len(token) < 32:
         raise ValueError('Token bridge non configurato')
+    if action == 'remote':
+        if not isinstance(payload, dict) or payload.get('method') not in {'Input.Up','Input.Down','Input.Left','Input.Right','Input.Select','Input.Back','Input.Home','Input.Info','Input.ContextMenu','Input.ShowOSD','Input.ExecuteAction'}:
+            raise ValueError('Comando Kodi remoto non consentito')
+        if payload.get('method') == 'Input.ExecuteAction':
+            if payload.get('action') not in {'play','pause','stop','next','previous','volumeup','volumedown','mute','fullscreen'} or set(payload) != {'method','action'}:
+                raise ValueError('Azione Kodi non consentita')
+        elif set(payload) != {'method'}:
+            raise ValueError('Parametri Kodi non validi')
     if action not in BRIDGE_GET | BRIDGE_POST:
         raise ValueError('Azione bridge non consentita')
     method = 'GET' if action in BRIDGE_GET else 'POST'
@@ -284,7 +292,7 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.read_post_body())
             if path.startswith('/api/bridge/'):
                 action = path[len('/api/bridge/'):]
-                if not isinstance(data, dict) or set(data) - {'id','root','page','page_size','search','group','title','poster'}:
+                if not isinstance(data, dict) or set(data) - {'id','root','page','page_size','search','group','title','poster','method','action'}:
                     return self.send_json(400, {'error':'Parametri bridge non validi'})
                 try:
                     return self.send_json(200, bridge_request(action, data))
