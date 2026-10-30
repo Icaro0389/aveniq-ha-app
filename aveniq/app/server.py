@@ -21,7 +21,7 @@ ALLOWED = {
     'light': {'turn_on', 'turn_off', 'toggle'},
     'switch': {'turn_on', 'turn_off', 'toggle'},
     'cover': {'open_cover', 'close_cover', 'stop_cover', 'set_cover_position'},
-    'climate': {'set_temperature', 'set_hvac_mode', 'turn_on', 'turn_off'},
+    'climate': {'set_temperature', 'set_hvac_mode', 'turn_on', 'turn_off', 'set_fan_mode', 'set_swing_mode'},
     'vacuum': {'start', 'pause', 'return_to_base', 'stop'},
     'script': {'turn_on'},
     'media_player': {'media_play_pause', 'media_stop', 'media_next_track', 'media_previous_track', 'volume_up', 'volume_down'},
@@ -188,7 +188,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(400, {'error': 'Parametri Alarmo non validi'})
                 if 'code' in extra and (not isinstance(extra['code'], str) or len(extra['code']) > 64):
                     return self.send_json(400, {'error': 'Codice non valido'})
-            elif not isinstance(extra, dict) or any(k not in ('brightness_pct','rgb_color','temperature','hvac_mode','position') for k in extra):
+            elif not isinstance(extra, dict) or any(k not in ('brightness_pct','rgb_color','temperature','hvac_mode','position','fan_mode','swing_mode') for k in extra):
                 return self.send_json(400, {'error': 'Parametri non validi'})
             ha('POST', f'/services/{domain}/{service}', {'entity_id': entity_id, **extra})
             return self.send_json(200, {'ok': True})
