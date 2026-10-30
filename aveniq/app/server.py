@@ -5,6 +5,8 @@ import json
 import logging
 import mimetypes
 import os
+import time
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Lock
@@ -40,8 +42,10 @@ def save_prefs(obj):
         if any(not isinstance(e, str) or not __import__('re').fullmatch(r'[a-z_]+\.[a-z0-9_]+', e) for e in ids):
             raise ValueError('Invalid entity')
     for widget in widgets:
-        if not isinstance(widget, dict) or set(widget) - {'type', 'title', 'entity'} or widget.get('type') not in ('entity', 'proxmox', 'ups', 'energy', 'network', 'zigbee', 'kodi'):
+        if not isinstance(widget, dict) or set(widget) - {'type', 'title', 'entity', 'span'} or widget.get('type') not in ('entity', 'proxmox', 'ups', 'energy', 'network', 'zigbee', 'kodi'):
             raise ValueError('Invalid widget')
+        if widget.get('span', 1) not in (1, 2, 3):
+            raise ValueError('Invalid span')
         if len(str(widget.get('title', ''))) > 80 or len(str(widget.get('entity', ''))) > 150:
             raise ValueError('Invalid widget data')
     if obj.get('theme', 'light') not in ('dark', 'light') or not isinstance(obj.get('compact', False), bool):
@@ -65,6 +69,7 @@ ALLOWED = {
     'climate': {'set_temperature', 'set_hvac_mode', 'turn_on', 'turn_off', 'set_fan_mode', 'set_swing_mode'},
     'vacuum': {'start', 'pause', 'return_to_base', 'stop'},
     'script': {'turn_on'},
+    'kodi': {'call_method'},
     'media_player': {'media_play_pause', 'media_stop', 'media_next_track', 'media_previous_track', 'volume_up', 'volume_down'},
 }
 # Security-sensitive commands intentionally omitted in the first release:
@@ -101,6 +106,36 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
+        if path == '/api/events':
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+            self.send_header('Cache-Control', 'no-cache, no-transform')
+            self.send_header('X-Accel-Buffering', 'no')
+            self.end_headers()
+            prev_states = prev_config = None
+            try:
+                for tick in range(900):
+                    if tick % 2 == 0:
+                        try:
+                            snapshot = ha('GET', '/states')
+                            raw = json.dumps(snapshot, separators=(',', ':'))
+                            digest = hashlib.sha256(raw.encode()).hexdigest()
+                            if prev_states != digest:
+                                self.wfile.write(('event: states\\ndata: ' + json.dumps({'states': snapshot}) + '\\n\\n').encode())
+                                prev_states = digest
+                        except (RuntimeError, HTTPError, URLError, TimeoutError):
+                            self.wfile.write(b'event: offline\\ndata: {}\\n\\n')
+                    conf = read_prefs()
+                    digest = hashlib.sha256(json.dumps(conf, sort_keys=True).encode()).hexdigest()
+                    if prev_config != digest:
+                        self.wfile.write(('event: config\\ndata: ' + json.dumps({'config': conf}) + '\\n\\n').encode())
+                        prev_config = digest
+                    self.wfile.write(b': heartbeat\\n\\n')
+                    self.wfile.flush()
+                    time.sleep(2)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            return
         if path == '/api/config':
             return self.send_json(200, {'config': read_prefs()})
         if path == '/api/health':
@@ -218,9 +253,19 @@ class Handler(BaseHTTPRequestHandler):
             entity_id = data['entity_id']
             if not all(isinstance(x, str) for x in (domain, service, entity_id)):
                 raise ValueError('Bad fields')
-            if service not in ALLOWED.get(domain, ()) or not entity_id.startswith(domain + '.'):
+            if service not in ALLOWED.get(domain, ()) or (domain != 'kodi' and not entity_id.startswith(domain + '.')):
                 return self.send_json(403, {'error': 'Comando non consentito'})
             extra = data.get('data', {})
+            if domain == 'kodi':
+                methods = {'Input.Up', 'Input.Down', 'Input.Left', 'Input.Right', 'Input.Select',
+                           'Input.Back', 'Input.Home', 'Input.Info', 'Input.ContextMenu', 'Input.ShowOSD'}
+                if service != 'call_method' or not isinstance(extra, dict) or set(extra) != {'method'} or extra['method'] not in methods or not entity_id.startswith('media_player.'):
+                    return self.send_json(403, {'error': 'Comando Kodi non consentito'})
+                current = next((a for a in ha('GET', '/states') if a.get('entity_id') == entity_id), None)
+                if not current or 'kodi' not in (entity_id + ' ' + current.get('attributes', {}).get('friendly_name', '')).lower():
+                    return self.send_json(403, {'error': 'Kodi non verificato'})
+                ha('POST', '/services/kodi/call_method', {'entity_id': entity_id, **extra})
+                return self.send_json(200, {'ok': True})
             if domain == 'lock':
                 if entity_id != 'lock.porta_ingresso' or extra != {}:
                     return self.send_json(403, {'error': 'Comando serratura non consentito'})
