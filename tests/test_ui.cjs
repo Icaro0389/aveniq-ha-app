@@ -23,16 +23,16 @@ test('room default assignment and widget UI render',()=>{
  const result=vm.runInContext("homeRooms()+widgetManager()",ctx);
  assert.match(result,/Salotto/);assert.match(result,/Widget Studio/);
 });
-test('Kodi empty state is explicit',()=>{
+test('Kodi Smart Bridge displays real catalog tabs',()=>{
  const result=vm.runInContext("kodiRemote()",ctx);
- assert.match(result,/Collega il media_player di Kodi/);
+ assert.match(result,/data-bridge-root="film"/);
+ assert.match(result,/data-bridge-root="series"/);
+ assert.match(result,/data-bridge-root="favourites"/);
+ assert.match(result,/data-bridge-search/);
 });
-
-test('Kodi D-pad uses allowlisted input methods',()=>{
- const result=vm.runInContext("(()=>{states['media_player.kodi']={state:'idle',attributes:{friendly_name:'Kodi'}};return kodiRemote()})()",ctx);
- assert.match(result,/Input.Up/);
- assert.match(result,/Input.Select/);
- assert.match(result,/Input.ContextMenu/);
+test('Kodi Bridge knows directory items',()=>{
+ const result=vm.runInContext("bridgeInfo({type:'directory',id:'abc',title:'Serie'})",ctx);
+ assert.equal(result.directory,true);assert.equal(result.id,'abc');
 });
 test('widget resize and drag handles render',()=>{
  const result=vm.runInContext("(()=>{view='impostazioni';widgetConfigs=[{type:'energy',entity:'sensor.test',span:2,title:'Energia'}];return widgetsBlock()})()",ctx);
