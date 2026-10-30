@@ -25,7 +25,7 @@ test('room default assignment and widget UI render',()=>{
 });
 test('Kodi empty state is explicit',()=>{
  const result=vm.runInContext("kodiRemote()",ctx);
- assert.match(result,/Nessuna entità media_player Kodi/);
+ assert.match(result,/Collega il media_player di Kodi/);
 });
 
 test('Kodi D-pad uses allowlisted input methods',()=>{
