@@ -1,5 +1,5 @@
 name: "Aveniq"
-version: "0.4.0"
+version: "0.5.0"
 slug: "aveniq"
 description: "Una plancia domotica moderna, responsive e integrata in Home Assistant"
 url: "https://github.com/Icaro0389/aveniq-ha-app"
@@ -18,4 +18,5 @@ homeassistant_api: true
 hassio_api: false
 options: {}
 schema: {}
-map: []
+map:
+  - data:rw
