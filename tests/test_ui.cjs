@@ -27,3 +27,16 @@ test('Kodi empty state is explicit',()=>{
  const result=vm.runInContext("kodiRemote()",ctx);
  assert.match(result,/Nessuna entità media_player Kodi/);
 });
+
+test('Kodi D-pad uses allowlisted input methods',()=>{
+ const result=vm.runInContext("(()=>{states['media_player.kodi']={state:'idle',attributes:{friendly_name:'Kodi'}};return kodiRemote()})()",ctx);
+ assert.match(result,/Input.Up/);
+ assert.match(result,/Input.Select/);
+ assert.match(result,/Input.ContextMenu/);
+});
+test('widget resize and drag handles render',()=>{
+ const result=vm.runInContext("(()=>{view='impostazioni';widgetConfigs=[{type:'energy',entity:'sensor.test',span:2,title:'Energia'}];return widgetsBlock()})()",ctx);
+ assert.match(result,/widget-span-2/);
+ assert.match(result,/data-widget-resize/);
+ assert.match(result,/draggable="true"/);
+});
