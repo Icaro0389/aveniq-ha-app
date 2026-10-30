@@ -59,3 +59,42 @@ curl http://localhost:8099/api/health
 ```
 
 Gli endpoint che richiedono HA falliscono correttamente in locale senza `SUPERVISOR_TOKEN`.
+
+
+## Aveniq 0.7 — Kodi Smart Bridge
+
+The previous provisional Kodi media_player-only remote has been replaced by
+an authenticated backend proxy for Kodi Smart Bridge. The Multimedia page now
+uses the real bridge API for Film, Serie TV, Live TV, Radio, VOD, search,
+playback and Kodi-native favourites (add/remove), plus navigation D-pad
+and transport controls using the bridge's `/v1/remote` endpoint.
+
+### One-time private configuration
+
+In **Home Assistant → Settings → Apps → Aveniq → Configuration**:
+
+- `bridge_url`: your trusted LAN bridge base URL, e.g. `http://KODI_BRIDGE_IP:8787`.
+  If using Kodi Smart Bridge HA App (Pilot), use the reachable HA host and mapped port (default 8790).
+- `bridge_token`: the existing **Kodi Smart Bridge** bearer token (at least 32 chars).
+
+Save and restart Aveniq. Do not paste the token in GitHub, a YAML dashboard,
+or public chat. Aveniq sends it server-to-server; it never reaches browser JS.
+The bridge must be reachable from the Aveniq App container.
+
+**Important:** Kodi Smart Bridge **v0.2.2** includes the new `/v1/remote`
+API. If your active bridge is the older LXC service, update that LXC's bridge
+application to the matching implementation. Updating the separate pilot
+repository does **not** automatically update the original LXC service.
+The catalog endpoints continue using the prior compatible v0.2 API.
+
+### Widgets
+
+Aveniq's built-in diagnostic gauges and Studio widgets render real HA sensor
+values as SVG indicators; they are *not* a verbatim import of the Lovelace-only
+Smart Home Cards components. Widget order and width are stored with shared
+configuration. Drag and drop currently targets desktop pointers; on mobile the
+width control remains available.
+
+### Recovery
+
+The Git branch `backup/pre-0.7.0` preserves Aveniq before this update.
