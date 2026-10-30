@@ -1,0 +1,21 @@
+name: "Aveniq"
+version: "0.1.0"
+slug: "aveniq"
+description: "Una plancia domotica moderna, responsive e integrata in Home Assistant"
+url: "https://github.com/REPLACE_WITH_YOUR_USERNAME/aveniq-ha-app"
+arch:
+  - amd64
+init: false
+startup: application
+boot: auto
+ingress: true
+ingress_port: 8099
+ingress_stream: true
+panel_icon: mdi:view-dashboard-variant
+panel_title: "Aveniq"
+panel_admin: false
+homeassistant_api: true
+hassio_api: false
+options: {}
+schema: {}
+map: []
