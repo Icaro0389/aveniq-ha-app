@@ -17,6 +17,7 @@ TOKEN = os.environ.get('SUPERVISOR_TOKEN') or os.environ.get('HASSIO_TOKEN')
 BASE = 'http://supervisor/core/api'
 ALLOWED = {
     'alarm_control_panel': {'alarm_arm_away', 'alarm_arm_night', 'alarm_disarm'},
+    'lock': {'lock', 'unlock', 'open'},
     'light': {'turn_on', 'turn_off', 'toggle'},
     'switch': {'turn_on', 'turn_off', 'toggle'},
     'cover': {'open_cover', 'close_cover', 'stop_cover', 'set_cover_position'},
@@ -26,7 +27,7 @@ ALLOWED = {
     'media_player': {'media_play_pause', 'media_stop', 'media_next_track', 'media_previous_track', 'volume_up', 'volume_down'},
 }
 # Security-sensitive commands intentionally omitted in the first release:
-# unlock, garage control, remote execution, service restarts.
+# garage control, remote execution, service restarts.
 # Alarmo controls are restricted to its exact configured entity ID.
 
 
@@ -173,6 +174,13 @@ class Handler(BaseHTTPRequestHandler):
             if service not in ALLOWED.get(domain, ()) or not entity_id.startswith(domain + '.'):
                 return self.send_json(403, {'error': 'Comando non consentito'})
             extra = data.get('data', {})
+            if domain == 'lock':
+                if entity_id != 'lock.porta_ingresso' or extra != {}:
+                    return self.send_json(403, {'error': 'Comando serratura non consentito'})
+                if service == 'open':
+                    entity = next((s for s in ha('GET', '/states') if s.get('entity_id') == entity_id), None)
+                    if entity is None or not (int(entity.get('attributes', {}).get('supported_features', 0)) & 1):
+                        return self.send_json(403, {'error': 'Apertura non supportata'})
             if domain == 'alarm_control_panel':
                 if entity_id != 'alarm_control_panel.alarmo':
                     return self.send_json(403, {'error': 'Entità antifurto non consentita'})
