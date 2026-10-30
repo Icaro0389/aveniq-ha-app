@@ -8,7 +8,7 @@ import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs, urlencode
 from urllib.request import Request, urlopen
 
 STATIC = Path(__file__).resolve().parent / 'static'
@@ -61,6 +61,31 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == '/api/health':
             return self.send_json(200, {'ok': True, 'name': 'Aveniq', 'ha_connected': bool(TOKEN)})
+        if path == '/api/history':
+            try:
+                entity = parse_qs(urlsplit(self.path).query).get('entity_id', [''])[0]
+                if entity != 'sensor.shellyemg3_b08184e86778_energy_meter_0_power':
+                    return self.send_json(403, {'error': 'Entità non autorizzata'})
+                from datetime import datetime, timedelta, timezone
+                start = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+                qs = urlencode({'filter_entity_id': entity, 'minimal_response': 'true', 'no_attributes': 'true'})
+                data = ha('GET', '/history/period/' + start + '?' + qs)
+                events = data[0] if isinstance(data, list) and data else []
+                points = []
+                for event in events:
+                    try:
+                        value = float(event.get('state', ''))
+                        if value != value or abs(value) == float('inf'):
+                            continue
+                        points.append({'time': event.get('last_changed') or event.get('last_updated'), 'value': value})
+                    except (ValueError, TypeError, AttributeError):
+                        continue
+                # Downsample to 180 samples to bound response size.
+                step = max(1, (len(points) + 179) // 180)
+                return self.send_json(200, {'points': points[::step][-180:]})
+            except (RuntimeError, HTTPError, URLError, TimeoutError, ValueError) as ex:
+                logging.warning('History error: %s', ex)
+                return self.send_json(502, {'error': 'Storico non raggiungibile'})
         if path == '/api/states':
             try:
                 return self.send_json(200, {'states': ha('GET', '/states')})
