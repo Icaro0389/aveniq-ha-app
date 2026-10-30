@@ -7,9 +7,50 @@ import mimetypes
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, parse_qs, urlencode
 from urllib.request import Request, urlopen
+
+DATA_DIR = Path('/data')
+PREFS_FILE = DATA_DIR / 'aveniq-config.json'
+PREFS_LOCK = Lock()
+PREFS_DEFAULT = {'rooms': {}, 'widgets': [], 'theme': 'light', 'compact': False}
+def read_prefs():
+    try:
+        if PREFS_FILE.exists():
+            obj = json.loads(PREFS_FILE.read_text(encoding='utf-8'))
+            return obj if isinstance(obj, dict) else dict(PREFS_DEFAULT)
+    except (ValueError, OSError):
+        pass
+    return dict(PREFS_DEFAULT)
+
+def save_prefs(obj):
+    if not isinstance(obj, dict) or set(obj) - {'rooms', 'widgets', 'theme', 'compact', 'entityMap', 'showHero', 'showStatus', 'showWidgets', 'showQuick'}:
+        raise ValueError('Invalid configuration')
+    if len(json.dumps(obj)) > 4096:
+        raise ValueError('Configuration too large')
+    rooms = obj.get('rooms', {})
+    widgets = obj.get('widgets', [])
+    if not isinstance(rooms, dict) or len(rooms) > 25 or not isinstance(widgets, list) or len(widgets) > 30:
+        raise ValueError('Invalid room/widget layout')
+    for room, ids in rooms.items():
+        if not isinstance(room, str) or len(room) > 64 or not isinstance(ids, list) or len(ids) > 100:
+            raise ValueError('Invalid rooms')
+        if any(not isinstance(e, str) or not __import__('re').fullmatch(r'[a-z_]+\.[a-z0-9_]+', e) for e in ids):
+            raise ValueError('Invalid entity')
+    for widget in widgets:
+        if not isinstance(widget, dict) or set(widget) - {'type', 'title', 'entity'} or widget.get('type') not in ('entity', 'proxmox', 'ups', 'energy', 'network', 'zigbee', 'kodi'):
+            raise ValueError('Invalid widget')
+        if len(str(widget.get('title', ''))) > 80 or len(str(widget.get('entity', ''))) > 150:
+            raise ValueError('Invalid widget data')
+    if obj.get('theme', 'light') not in ('dark', 'light') or not isinstance(obj.get('compact', False), bool):
+        raise ValueError('Invalid appearance')
+    with PREFS_LOCK:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = PREFS_FILE.with_suffix('.tmp')
+        tmp.write_text(json.dumps(obj, ensure_ascii=False), encoding='utf-8')
+        tmp.replace(PREFS_FILE)
 
 STATIC = Path(__file__).resolve().parent / 'static'
 PORT = int(os.environ.get('PORT', '8099'))
@@ -60,6 +101,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlsplit(self.path).path
+        if path == '/api/config':
+            return self.send_json(200, {'config': read_prefs()})
         if path == '/api/health':
             return self.send_json(200, {'ok': True, 'name': 'Aveniq', 'ha_connected': bool(TOKEN)})
         if path == '/api/history':
@@ -161,12 +204,16 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def do_POST(self):
-        if urlsplit(self.path).path != '/api/service':
+        path = urlsplit(self.path).path
+        if path not in ('/api/service', '/api/config'):
             return self.send_json(404, {'error': 'Not found'})
         if self.headers.get('Sec-Fetch-Site', 'same-origin') not in ('same-origin', 'none'):
             return self.send_json(403, {'error': 'Origin non consentita'})
         try:
             data = json.loads(self.read_post_body())
+            if path == '/api/config':
+                save_prefs(data)
+                return self.send_json(200, {'ok': True})
             domain, service = data['domain'], data['service']
             entity_id = data['entity_id']
             if not all(isinstance(x, str) for x in (domain, service, entity_id)):
