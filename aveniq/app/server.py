@@ -121,16 +121,16 @@ class Handler(BaseHTTPRequestHandler):
                             raw = json.dumps(snapshot, separators=(',', ':'))
                             digest = hashlib.sha256(raw.encode()).hexdigest()
                             if prev_states != digest:
-                                self.wfile.write(('event: states\\ndata: ' + json.dumps({'states': snapshot}) + '\\n\\n').encode())
+                                self.wfile.write(('event: states\ndata: ' + json.dumps({'states': snapshot}) + '\n\n').encode())
                                 prev_states = digest
                         except (RuntimeError, HTTPError, URLError, TimeoutError):
-                            self.wfile.write(b'event: offline\\ndata: {}\\n\\n')
+                            self.wfile.write(b'event: offline\ndata: {}\n\n')
                     conf = read_prefs()
                     digest = hashlib.sha256(json.dumps(conf, sort_keys=True).encode()).hexdigest()
                     if prev_config != digest:
-                        self.wfile.write(('event: config\\ndata: ' + json.dumps({'config': conf}) + '\\n\\n').encode())
+                        self.wfile.write(('event: config\ndata: ' + json.dumps({'config': conf}) + '\n\n').encode())
                         prev_config = digest
-                    self.wfile.write(b': heartbeat\\n\\n')
+                    self.wfile.write(b': heartbeat\n\n')
                     self.wfile.flush()
                     time.sleep(2)
             except (BrokenPipeError, ConnectionResetError, OSError):
