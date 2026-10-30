@@ -83,16 +83,62 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def read_post_body(self):
+        """Read a bounded JSON request, including chunked bodies forwarded by Ingress."""
+        limit = 8192
+        transfer = self.headers.get('Transfer-Encoding', '').lower()
+        if 'chunked' in transfer:
+            body = bytearray()
+            while True:
+                line = self.rfile.readline(128)
+                if not line or len(line) >= 128:
+                    raise ValueError('Invalid chunk header')
+                try:
+                    size = int(line.split(b';', 1)[0].strip(), 16)
+                except ValueError as exc:
+                    raise ValueError('Invalid chunk size') from exc
+                if size == 0:
+                    # Consume trailers up to a conservative bound.
+                    for _ in range(16):
+                        trailer = self.rfile.readline(1024)
+                        if trailer in (b'\\r\\n', b'\\n'):
+                            break
+                        if not trailer or len(trailer) >= 1024:
+                            raise ValueError('Invalid chunk trailer')
+                    else:
+                        raise ValueError('Too many chunk trailers')
+                    break
+                if size < 0 or len(body) + size > limit:
+                    raise ValueError('Request too large')
+                chunk = self.rfile.read(size)
+                if len(chunk) != size or self.rfile.read(2) != b'\\r\\n':
+                    raise ValueError('Incomplete chunk')
+                body.extend(chunk)
+            if not body:
+                raise ValueError('Empty request')
+            return bytes(body)
+
+        length_header = self.headers.get('Content-Length')
+        if length_header is None:
+            raise ValueError('Missing request length')
+        try:
+            length = int(length_header)
+        except ValueError as exc:
+            raise ValueError('Invalid request length') from exc
+        if length <= 0 or length > limit:
+            raise ValueError('Invalid request size')
+        body = self.rfile.read(length)
+        if len(body) != length:
+            raise ValueError('Incomplete request')
+        return body
+
     def do_POST(self):
         if urlsplit(self.path).path != '/api/service':
             return self.send_json(404, {'error': 'Not found'})
         if self.headers.get('Sec-Fetch-Site', 'same-origin') not in ('same-origin', 'none'):
             return self.send_json(403, {'error': 'Origin non consentita'})
         try:
-            length = int(self.headers.get('Content-Length', '0'))
-            if length <= 0 or length > 8192:
-                return self.send_json(400, {'error': 'Dimensione richiesta non valida'})
-            data = json.loads(self.rfile.read(length))
+            data = json.loads(self.read_post_body())
             domain, service = data['domain'], data['service']
             entity_id = data['entity_id']
             if not all(isinstance(x, str) for x in (domain, service, entity_id)):
