@@ -56,6 +56,33 @@ def save_prefs(obj):
         tmp.write_text(json.dumps(obj, ensure_ascii=False), encoding='utf-8')
         tmp.replace(PREFS_FILE)
 
+
+BRIDGE_GET = {'health', 'roots', 'favourites', 'radio'}
+BRIDGE_POST = {'browse', 'play', 'favourite', 'favourite/remove'}
+def bridge_request(action, payload=None):
+    from urllib.parse import urlparse
+    options_path = DATA_DIR / 'options.json'
+    try:
+        options = json.loads(options_path.read_text())
+    except (OSError, ValueError):
+        options = {}
+    base_url = str(options.get('bridge_url', '')).rstrip('/')
+    token = str(options.get('bridge_token', ''))
+    parsed = urlparse(base_url)
+    if parsed.scheme != 'http' or not parsed.hostname or parsed.username or parsed.password or parsed.path not in ('', '/'):
+        raise ValueError('Bridge URL non configurato correttamente')
+    if len(token) < 32:
+        raise ValueError('Token bridge non configurato')
+    if action not in BRIDGE_GET | BRIDGE_POST:
+        raise ValueError('Azione bridge non consentita')
+    method = 'GET' if action in BRIDGE_GET else 'POST'
+    data = None if payload is None else json.dumps(payload).encode()
+    req = Request(base_url + '/v1/' + action, data=data, method=method, headers={
+        'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'})
+    with urlopen(req, timeout=12) as response:
+        raw = response.read(1024 * 1024)
+    return json.loads(raw) if raw else {}
+
 STATIC = Path(__file__).resolve().parent / 'static'
 PORT = int(os.environ.get('PORT', '8099'))
 TOKEN = os.environ.get('SUPERVISOR_TOKEN') or os.environ.get('HASSIO_TOKEN')
@@ -138,6 +165,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == '/api/config':
             return self.send_json(200, {'config': read_prefs()})
+        if path.startswith('/api/bridge/'):
+            action = path[len('/api/bridge/'):]
+            if action not in BRIDGE_GET:
+                return self.send_json(404, {'error':'Azione non consentita'})
+            try:
+                return self.send_json(200, bridge_request(action))
+            except (ValueError, HTTPError, URLError, TimeoutError, OSError) as exc:
+                logging.warning('Bridge read unavailable: %s', type(exc).__name__)
+                return self.send_json(502, {'error': 'Bridge non raggiungibile o non configurato'})
         if path == '/api/health':
             return self.send_json(200, {'ok': True, 'name': 'Aveniq', 'ha_connected': bool(TOKEN)})
         if path == '/api/history':
@@ -240,12 +276,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
-        if path not in ('/api/service', '/api/config'):
+        if path not in ('/api/service', '/api/config') and not (path.startswith('/api/bridge/') and path[len('/api/bridge/'):] in BRIDGE_POST):
             return self.send_json(404, {'error': 'Not found'})
         if self.headers.get('Sec-Fetch-Site', 'same-origin') not in ('same-origin', 'none'):
             return self.send_json(403, {'error': 'Origin non consentita'})
         try:
             data = json.loads(self.read_post_body())
+            if path.startswith('/api/bridge/'):
+                action = path[len('/api/bridge/'):]
+                if not isinstance(data, dict) or set(data) - {'id','root','page','page_size','search','group','title','poster'}:
+                    return self.send_json(400, {'error':'Parametri bridge non validi'})
+                try:
+                    return self.send_json(200, bridge_request(action, data))
+                except (ValueError, HTTPError, URLError, TimeoutError, OSError) as exc:
+                    logging.warning('Bridge action unavailable: %s', type(exc).__name__)
+                    return self.send_json(502, {'error':'Comando bridge non riuscito'})
             if path == '/api/config':
                 save_prefs(data)
                 return self.send_json(200, {'ok': True})
