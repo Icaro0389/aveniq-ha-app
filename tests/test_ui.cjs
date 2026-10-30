@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const {test} = require('node:test');
-const source = fs.readFileSync('aveniq/app/static/assets/app.js','utf8').replace('refresh();bridgeBrowse(\'film\');', 'refresh();').replace(/render\(\);loadSharedConfig\(\);refresh\(\);setInterval\(\(\)=>\{if\(!requestRunning\)refresh\(\)\},8000\);\s*$/, '');
+const source = fs.readFileSync('aveniq/app/static/assets/app.js','utf8').split('\nrender();loadSharedConfig();refresh();')[0];
 const storage={};
 const ctx={console,document:{querySelector:()=>({innerHTML:'',classList:{toggle(){}},addEventListener(){},remove(){}}),querySelectorAll:()=>[],body:{classList:{toggle(){}},insertAdjacentHTML(){}},addEventListener(){}},window:{},localStorage:{getItem:(k)=>storage[k]||null,setItem:(k,v)=>storage[k]=v},setTimeout,clearTimeout,setInterval:()=>{},fetch:()=>Promise.reject(new Error('offline')),URL,Blob};
 vm.createContext(ctx);
