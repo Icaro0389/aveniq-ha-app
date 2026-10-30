@@ -101,7 +101,7 @@ class Handler(BaseHTTPRequestHandler):
                     # Consume trailers up to a conservative bound.
                     for _ in range(16):
                         trailer = self.rfile.readline(1024)
-                        if trailer in (b'\\r\\n', b'\\n'):
+                        if trailer in (b'\r\n', b'\n'):
                             break
                         if not trailer or len(trailer) >= 1024:
                             raise ValueError('Invalid chunk trailer')
@@ -111,7 +111,7 @@ class Handler(BaseHTTPRequestHandler):
                 if size < 0 or len(body) + size > limit:
                     raise ValueError('Request too large')
                 chunk = self.rfile.read(size)
-                if len(chunk) != size or self.rfile.read(2) != b'\\r\\n':
+                if len(chunk) != size or self.rfile.read(2) != b'\r\n':
                     raise ValueError('Incomplete chunk')
                 body.extend(chunk)
             if not body:
