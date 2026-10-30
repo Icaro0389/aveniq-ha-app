@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const {test} = require('node:test');
 const source = fs.readFileSync('aveniq/app/static/assets/app.js','utf8').replace(/render\(\);loadSharedConfig\(\);refresh\(\);setInterval\(\(\)=>\{if\(!requestRunning\)refresh\(\)\},8000\);\s*$/, '');
 const storage={};
-const ctx={console,document:{querySelector:()=>({innerHTML:'',classList:{toggle(){}},addEventListener(){}}),querySelectorAll:()=>[],body:{classList:{toggle(){}},insertAdjacentHTML(){}},addEventListener(){}},window:{},localStorage:{getItem:(k)=>storage[k]||null,setItem:(k,v)=>storage[k]=v},setTimeout,clearTimeout,setInterval:()=>{},fetch:()=>Promise.reject(new Error('offline')),URL,Blob};
+const ctx={console,document:{querySelector:()=>({innerHTML:'',classList:{toggle(){}},addEventListener(){},remove(){}}),querySelectorAll:()=>[],body:{classList:{toggle(){}},insertAdjacentHTML(){}},addEventListener(){}},window:{},localStorage:{getItem:(k)=>storage[k]||null,setItem:(k,v)=>storage[k]=v},setTimeout,clearTimeout,setInterval:()=>{},fetch:()=>Promise.reject(new Error('offline')),URL,Blob};
 vm.createContext(ctx);
 vm.runInContext(source,ctx);
 test('climate premium generates live setpoint dial',()=>{
